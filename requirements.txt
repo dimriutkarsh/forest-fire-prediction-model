@@ -1,5 +1,7 @@
-flask==2.3.2
-joblib
-numpy
-scikit-learn
+flask
 gunicorn
+joblib
+xgboost
+scikit-learn
+numpy
+pandas
