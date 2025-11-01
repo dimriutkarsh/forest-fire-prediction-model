@@ -1,8 +1,13 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS  # 👈 Import CORS
 import joblib
 import numpy as np
 
 app = Flask(__name__)
+CORS(app)  # 👈 Enable CORS for all routes
+
+# Optional: restrict to a specific frontend origin (recommended for production)
+# CORS(app, origins=["http://localhost:3000"])
 
 MODEL_PATH = "forest_fire_model.pkl"
 SCALER_PATH = "scaler.pkl"
@@ -22,6 +27,7 @@ def predict():
         humidity = float(data["humidity"])
         smoke = float(data["smoke"])
 
+        # Feature engineering
         temp_hum = temperature / (humidity + 1)
         temp_smoke = temperature / (smoke + 1)
         smoke_hum = smoke / (humidity + 1)
@@ -49,5 +55,4 @@ def predict():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080)
-
+    app.run(host="0.0.0.0", port=10000)
