@@ -1,58 +1,82 @@
 from flask import Flask, request, jsonify
-from flask_cors import CORS  # 👈 Import CORS
-import joblib
+from flask_cors import CORS
 import numpy as np
+import joblib
 
 app = Flask(__name__)
-CORS(app)  # 👈 Enable CORS for all routes
+CORS(app)
 
-# Optional: restrict to a specific frontend origin (recommended for production)
-# CORS(app, origins=["http://localhost:3000"])
+# Load model
+try:
+    model = joblib.load("forest_fire_model.pkl")
+    scaler = joblib.load("scaler.pkl")
+    print("✅ Model and scaler loaded successfully!")
+except Exception as e:
+    print(f"❌ Error loading model: {e}")
+    # Don't exit in Vercel environment
+    model = None
+    scaler = None
 
-MODEL_PATH = "forest_fire_model.pkl"
-SCALER_PATH = "scaler.pkl"
-
-model = joblib.load(MODEL_PATH)
-scaler = joblib.load(SCALER_PATH)
+FEATURE_ORDER = ["temperature", "humidity", "smoke", "temp_max", "temp_min",
+                "pressure", "clouds_all", "wind_speed", "wind_deg", "temp_local", "wind_gust"]
 
 @app.route("/")
 def home():
-    return jsonify({"message": "Forest Fire Prediction API running successfully"})
+    return jsonify({"message": "🌲 Forest Fire Prediction API is running on Vercel!"})
 
-@app.route("/predict", methods=["POST"])
+@app.route("/predict", methods=["POST", "OPTIONS"])
 def predict():
+    if request.method == "OPTIONS":
+        return _build_cors_preflight_response()
+    
+    if model is None or scaler is None:
+        return jsonify({"error": "Model not loaded"}), 500
+    
     try:
         data = request.get_json()
-        temperature = float(data["temperature"])
-        humidity = float(data["humidity"])
-        smoke = float(data["smoke"])
-
-        # Feature engineering
-        temp_hum = temperature / (humidity + 1)
-        temp_smoke = temperature / (smoke + 1)
-        smoke_hum = smoke / (humidity + 1)
-
-        X_new = np.array([[temperature, humidity, smoke, temp_hum, temp_smoke, smoke_hum]])
-        X_scaled = scaler.transform(X_new)
-        pred = model.predict(X_scaled)[0]
-        prob = model.predict_proba(X_scaled)[0, 1]
-
-        if pred == 1:
-            return jsonify({
-                "fire_risk": 1,
-                "message": "🔥 Forest Fire Detected!",
-                "probability": round(float(prob), 2)
-            })
-        else:
-            return jsonify({
-                "fire_risk": 0,
-                "message": "✅ No Fire Detected.",
-                "probability": round(float(prob), 2)
-            })
-
+        
+        if not data:
+            return jsonify({"error": "No JSON data provided"}), 400
+        
+        # Check required fields
+        missing_fields = [field for field in FEATURE_ORDER if field not in data and field != "wind_gust"]
+        if missing_fields:
+            return jsonify({"error": f"Missing required fields: {missing_fields}"}), 400
+        
+        # Prepare features
+        features = []
+        for field in FEATURE_ORDER:
+            if field == "wind_gust":
+                value = data.get(field, 0)
+            else:
+                value = data[field]
+            features.append(float(value))
+        
+        # Predict
+        features_array = np.array([features])
+        scaled_features = scaler.transform(features_array)
+        prediction = int(model.predict(scaled_features)[0])
+        probability = float(model.predict_proba(scaled_features)[0, 1])
+        
+        response = jsonify({
+            "fire_risk": prediction,
+            "probability": round(probability, 3),
+            "message": "🔥 Forest Fire Detected!" if prediction == 1 else "✅ No Fire Detected."
+        })
+        
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        return response
+        
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
+def _build_cors_preflight_response():
+    response = jsonify({"status": "preflight"})
+    response.headers.add("Access-Control-Allow-Origin", "*")
+    response.headers.add("Access-Control-Allow-Headers", "Content-Type")
+    response.headers.add("Access-Control-Allow-Methods", "POST, OPTIONS")
+    return response
 
+# Vercel requires the app variable to be named 'app'
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    app.run(debug=False)
