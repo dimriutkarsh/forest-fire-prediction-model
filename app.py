@@ -1,20 +1,25 @@
 from flask import Flask, request, jsonify
 import numpy as np
 import joblib
+import os
 
 app = Flask(__name__)
 
-model = joblib.load("forest_fire_model.pkl")
-scaler = joblib.load("scaler.pkl")
+# Load model and scaler from current directory
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "forest_fire_model.pkl")
+SCALER_PATH = os.path.join(os.path.dirname(__file__), "scaler.pkl")
 
-@app.route("/")
+model = joblib.load(MODEL_PATH)
+scaler = joblib.load(SCALER_PATH)
+
+@app.route("/", methods=["GET"])
 def home():
     return jsonify({"message": "Forest Fire Prediction API is running!"})
 
 @app.route("/predict", methods=["POST"])
 def predict():
     try:
-        data = request.get_json()
+        data = request.get_json(force=True)
         temp = float(data["temperature"])
         humidity = float(data["humidity"])
         smoke = float(data["smoke"])
@@ -37,6 +42,5 @@ def predict():
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
-# ❌ Remove app.run() completely
-# ✅ Export app object for Vercel
+# Export app object for Vercel serverless runtime
 handler = app
